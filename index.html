@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HAM通联日志 Supabase云端版</title>
+<!-- SDK仅引入一次 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;font-family:system-ui, sans-serif;}
+body{max-width:1400px;margin:20px auto;padding:0 16px;background:#f7f8fa;}
+h1{text-align:center;}
+h2{color:#222;margin-top:0;display:flex;align-items:center;gap:8px;font-size:18px;}
+.card{background:#fff;padding:20px;border-radius:10px;box-shadow:0 1px 4px #0002;margin-bottom:20px;}
+.form-grid{display:grid;grid-template-columns: 1fr 1fr 1fr;gap:12px;margin-bottom:20px;}
+.form-item{display:flex;flex-direction:column;}
+label{font-size:14px;margin-bottom:4px;color:#444;}
+input, select{padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:15px;}
+.btns-row{display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
+button{padding:9px 18px;border:none;border-radius:6px;cursor:pointer;font-size:15px;}
+.btn-save{background:#2b7cd3;color:white;}
+.btn-clear{background:#888;color:white;}
+.btn-export{background:#279e68;color:white;}
+.btn-import{background:#e67722;color:white;}
+.btn-del{background:#dd4444;color:white;padding:5px 8px;font-size:12px;}
+.btn-edit{background:#4477dd;color:white;padding:5px 8px;font-size:12px;margin-right:4px;}
+.search-bar{display:flex;gap:10px;align-items:center;margin-bottom:12px;}
+#searchCall{flex:1;max-width:400px;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th,td{border:1px solid #ddd;padding:6px 8px;}
+th{background:#f1f3f5;}
+@media(max-width:720px){.form-grid{grid-template-columns:1fr 1fr;}}
+@media(max-width:480px){.form-grid{grid-template-columns:1fr;}}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);align-items:center;justify-content:center;}
+.modal-content{background:white;padding:20px;border-radius:10px;max-width:900px;width:90%;max-height:90vh;overflow:auto;}
+.modal.active{display:flex;}
+.login-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:#fff;display:flex;align-items:center;justify-content:center;z-index:9999;}
+.login-box{padding:24px;background:#fff;border-radius:10px;box-shadow:0 2px 12px #0003;min-width:320px;}
+.status-tip{font-size:13px;color:#2b7cd3;margin:8px 0;}
+.err-text{color:#d03030;font-size:13px;margin-top:8px;}
+</style>
+</head>
+<body>
+<div id="loginScreen" class="login-modal">
+  <div class="login-box">
+    <h3>🔐 Supabase账号登录</h3>
+    <div class="form-item">
+      <label>邮箱(用户名)</label>
+      <input id="loginEmail" type="email">
+    </div>
+    <div class="form-item" style="margin-top:8px;">
+      <label>密码</label>
+      <input id="loginPwd" type="password">
+    </div>
+    <div class="btns-row" style="margin-top:16px;">
+      <button class="btn-save" onclick="doLogin()">登录</button>
+    </div>
+    <div id="loginError" class="err-text"></div>
+  </div>
+</div>
+
+<div id="mainApp" style="display:none;">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h1>HAM 通联日志（Supabase云端版）</h1>
+    <button class="btn-del" onclick="doLogout()">退出登录</button>
+  </div>
+  <div class="status-tip" id="syncStatus">正在连接云端...</div>
+  <div class="card">
+    <h2>📝 新增记录</h2>
+    <div class="form-grid">
+      <div class="form-item"><label>1.对方呼号</label><input id="call_sign" type="text"></div>
+      <div class="form-item"><label>2.日期</label><input id="log_date" type="date"></div>
+      <div class="form-item"><label>3.时间</label><input id="log_time" type="time"></div>
+      <div class="form-item"><label>4.模式(FM/CW/SSB)</label><input list="modes" id="mode" type="text"><datalist id="modes"><option>FM</option><option>CW</option><option>SSB</option></datalist></div>
+      <div class="form-item"><label>5.频率(MHz)</label><input id="freq" type="text" value="438.500"></div>
+      <div class="form-item"><label>6.RST发出</label><input id="rst_sent" type="text"></div>
+      <div class="form-item"><label>7.RST接收</label><input id="rst_rcv" type="text"></div>
+      <div class="form-item"><label>8.对端功率</label><input id="pwr_other" type="text"></div>
+      <div class="form-item"><label>9.本端功率</label><input id="pwr_my" type="text"></div>
+      <div class="form-item"><label>10.对端QTH</label><input id="qth_other" type="text"></div>
+      <div class="form-item"><label>11.本端QTH</label><input id="qth_my" type="text"></div>
+      <div class="form-item"><label>12.对端设备</label><input id="device_other" type="text"></div>
+      <div class="form-item"><label>13.QSL已发</label><input id="qsl_sent" type="text"></div>
+      <div class="form-item"><label>14.QSL已收</label><input id="qsl_rcv" type="text"></div>
+      <div class="form-item"><label>15.备注</label><input id="remark" type="text"></div>
+    </div>
+    <div class="btns-row">
+      <button class="btn-save" onclick="saveRecord()">记入日志(同步云端)</button>
+      <button class="btn-clear" onclick="clearForm()">清空表单</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>🔍 查询 / 导出 / 导入</h2>
+    <div class="search-bar"><input id="searchCall" placeholder="输入呼号搜索，留空显示全部记录" oninput="renderTable()"></div>
+    <div class="btns-row">
+      <button class="btn-export" onclick="exportCsv()">导出CSV文件</button>
+      <button class="btn-export" onclick="exportAdif()">导出ADIF(.adi)</button>
+      <button class="btn-import" onclick="document.getElementById('fileCsv').click()">导入CSV(追加云端)</button>
+      <button class="btn-import" onclick="document.getElementById('fileAdif').click()">导入ADIF(.adi)(追加云端)</button>
+      <input id="fileCsv" type="file" accept=".csv" style="display:none" onchange="handleImportCsv(event)">
+      <input id="fileAdif" type="file" accept=".adi,.adif,.txt" style="display:none" onchange="handleImportAdif(event)">
+    </div>
+    <p style="font-size:14px;color:#666;">数据保存在Supabase云端；请定期导出ADI备份。</p>
+    <div id="tableWrap"></div>
+  </div>
+  <div id="editModal" class="modal">
+    <div class="modal-content">
+      <h3>修改记录</h3>
+      <input type="hidden" id="editTs">
+      <div class="form-grid">
+        <div class="form-item"><label>1.对方呼号</label><input id="e_call_sign" type="text"></div>
+        <div class="form-item"><label>2.日期</label><input id="e_log_date" type="date"></div>
+        <div class="form-item"><label>3.时间</label><input id="e_log_time" type="time"></div>
+        <div class="form-item"><label>4.模式</label><input id="e_mode" type="text"></div>
+        <div class="form-item"><label>5.频率(MHz)</label><input id="e_freq" type="text"></div>
+        <div class="form-item"><label>6.RST发出</label><input id="e_rst_sent" type="text"></div>
+        <div class="form-item"><label>7.RST接收</label><input id="e_rst_rcv" type="text"></div>
+        <div class="form-item"><label>8.对端功率</label><input id="e_pwr_other" type="text"></div>
+        <div class="form-item"><label>9.本端功率</label><input id="e_pwr_my" type="text"></div>
+        <div class="form-item"><label>10.对端QTH</label><input id="e_qth_other" type="text"></div>
+        <div class="form-item"><label>11.本端QTH</label><input id="e_qth_my" type="text"></div>
+        <div class="form-item"><label>12.对端设备</label><input id="e_device_other" type="text"></div>
+        <div class="form-item"><label>13.QSL已发</label><input id="e_qsl_sent" type="text"></div>
+        <div class="form-item"><label>14.QSL已收</label><input id="e_qsl_rcv" type="text"></div>
+        <div class="form-item"><label>15.备注</label><input id="e_remark" type="text"></div>
+      </div>
+      <div class="btns-row">
+        <button class="btn-save" onclick="submitEdit()">保存修改</button>
+        <button class="btn-clear" onclick="closeModal()">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://isplkkksnsdiuolmyrxe.supabase.co";
+const SUPABASE_PUB_KEY = "sb_publishable_gSvSoF4pq1A7cY1M7deA3g_yz6kGQUj";
+let supabaseClient = null;
+let globalLogList = [];
+let editingOriginRecord = null;
+
+// 标准化日期：斜杠转横杠，月日补0
+function normalizeDateStr(dStr){
+  if(!dStr) return '';
+  let s = String(dStr).replace(/\//g,'-');
+  const parts = s.split('-').map(x=>Number(x));
+  if(parts.length===3){
+    const [y,m,d] = parts;
+    if(!isNaN(y)&&!isNaN(m)&&!isNaN(d)){
+      return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    }
+  }
+  return s;
+}
+// 标准化时间，小时补0
+function normalizeTimeStr(tStr){
+  if(!tStr) return '';
+  const parts = String(tStr).split(':').map(x=>Number(x));
+  if(parts.length>=2){
+    const [h,mi] = parts;
+    if(!isNaN(h)&&!isNaN(mi)){
+      return `${String(h).padStart(2,'0')}:${String(mi).padStart(2,'0')}`;
+    }
+  }
+  return tStr;
+}
+
+function escapeHtml(str){
+  if(!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+const els = {
+  call_sign: document.getElementById('call_sign'),
+  log_date: document.getElementById('log_date'),
+  log_time: document.getElementById('log_time'),
+  mode: document.getElementById('mode'),
+  freq: document.getElementById('freq'),
+  rst_sent: document.getElementById('rst_sent'),
+  rst_rcv: document.getElementById('rst_rcv'),
+  pwr_other: document.getElementById('pwr_other'),
+  pwr_my: document.getElementById('pwr_my'),
+  qth_other: document.getElementById('qth_other'),
+  qth_my: document.getElementById('qth_my'),
+  device_other: document.getElementById('device_other'),
+  qsl_sent: document.getElementById('qsl_sent'),
+  qsl_rcv: document.getElementById('qsl_rcv'),
+  remark: document.getElementById('remark'),
+};
+
+window.doLogin = async function(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const pw = document.getElementById('loginPwd').value;
+  document.getElementById('loginError').innerText='';
+  if(!email||!pw){
+    document.getElementById('loginError').innerText="请填写邮箱与密码";
+    return;
+  }
+  const {data,error}=await supabaseClient.auth.signInWithPassword({email:email,password:pw});
+  if(error){
+    document.getElementById('loginError').innerText=error.message;
+    return;
+  }
+  document.getElementById('loginScreen').style.display="none";
+  document.getElementById('mainApp').style.display="block";
+  setDefaultDate();
+  await loadFromCloud();
+  renderTable();
+  document.getElementById('syncStatus').innerText="✅云端连接正常";
+};
+
+window.doLogout = async function(){
+  await supabaseClient.auth.signOut();
+  document.getElementById('mainApp').style.display="none";
+  document.getElementById('loginScreen').style.display="flex";
+  globalLogList=[];
+  editingOriginRecord=null;
+};
+
+function setDefaultDate(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  els.log_date.value = `${y}-${m}-${day}`;
+}
+
+async function loadFromCloud(){
+  if(!supabaseClient) return;
+  const {data,error}=await supabaseClient.schema('public').from('ham_logs').select('*').order('ts',{ascending:false});
+  if(error){
+    alert("读取云端失败："+error.message);
+    console.error(error);
+    return;
+  }
+  globalLogList = data||[];
+}
+
+window.saveRecord = async function(){
+  const rec = {
+    call_sign: els.call_sign.value.trim(),
+    log_date: els.log_date.value,
+    log_time: els.log_time.value,
+    mode: els.mode.value.trim(),
+    freq: els.freq.value.trim(),
+    rst_sent: els.rst_sent.value.trim(),
+    rst_rcv: els.rst_rcv.value.trim(),
+    pwr_other: els.pwr_other.value.trim(),
+    pwr_my: els.pwr_my.value.trim(),
+    qth_other: els.qth_other.value.trim(),
+    qth_my: els.qth_my.value.trim(),
+    device_other: els.device_other.value.trim(),
+    qsl_sent: els.qsl_sent.value.trim(),
+    qsl_rcv: els.qsl_rcv.value.trim(),
+    remark: els.remark.value.trim(),
+    ts: Date.now()
+  };
+  const {error}=await supabaseClient.schema('public').from('ham_logs').insert([rec]);
+  if(error){
+    alert("保存云端失败:"+error.message);
+    return;
+  }
+  alert('记录已保存到云端！表单保留，如需清空点【清空表单】');
+  await loadFromCloud();
+  renderTable();
+};
+
+window.clearForm = function(){
+  Object.values(els).forEach(input=>input.value='');
+  setDefaultDate();
+  els.freq.value = '438.500';
+};
+
+window.deleteRecord = async function(ts){
+  if(!confirm("确定删除这条QSO记录？")) return;
+  const {error}=await supabaseClient.schema('public').from('ham_logs').delete().eq('ts',ts);
+  if(error){
+    alert("删除失败:"+error.message);
+    return;
+  }
+  await loadFromCloud();
+  renderTable();
+};
+
+window.openEdit = function(ts){
+  const r = globalLogList.find(item=>item.ts===ts);
+  if(!r) return;
+  editingOriginRecord = {...r};
+  document.getElementById('editTs').value = ts;
+  document.getElementById('e_call_sign').value = r.call_sign||'';
+  document.getElementById('e_log_date').value = normalizeDateStr(r.log_date);
+  document.getElementById('e_log_time').value = normalizeTimeStr(r.log_time);
+  document.getElementById('e_mode').value = r.mode||'';
+  document.getElementById('e_freq').value = r.freq||'';
+  document.getElementById('e_rst_sent').value = r.rst_sent||'';
+  document.getElementById('e_rst_rcv').value = r.rst_rcv||'';
+  document.getElementById('e_pwr_other').value = r.pwr_other||'';
+  document.getElementById('e_pwr_my').value = r.pwr_my||'';
+  document.getElementById('e_qth_other').value = r.qth_other||'';
+  document.getElementById('e_qth_my').value = r.qth_my||'';
+  document.getElementById('e_device_other').value = r.device_other||'';
+  document.getElementById('e_qsl_sent').value = r.qsl_sent||'';
+  document.getElementById('e_qsl_rcv').value = r.qsl_rcv||'';
+  document.getElementById('e_remark').value = r.remark||'';
+  document.getElementById('editModal').classList.add("active");
+};
+
+window.closeModal = function(){
+  document.getElementById('editModal').classList.remove("active");
+  editingOriginRecord = null;
+};
+
+window.submitEdit = async function(){
+  if(!editingOriginRecord) return;
+  const targetTs = Number(document.getElementById('editTs').value);
+
+  function getVal(inputId, originVal){
+    const v = document.getElementById(inputId).value.trim();
+    return v === '' ? originVal : v;
+  }
+
+  const updateObj = {
+    call_sign: getVal('e_call_sign', editingOriginRecord.call_sign),
+    log_date: getVal('e_log_date', editingOriginRecord.log_date),
+    log_time: getVal('e_log_time', editingOriginRecord.log_time),
+    mode: getVal('e_mode', editingOriginRecord.mode),
+    freq: getVal('e_freq', editingOriginRecord.freq),
+    rst_sent: getVal('e_rst_sent', editingOriginRecord.rst_sent),
+    rst_rcv: getVal('e_rst_rcv', editingOriginRecord.rst_rcv),
+    pwr_other: getVal('e_pwr_other', editingOriginRecord.pwr_other),
+    pwr_my: getVal('e_pwr_my', editingOriginRecord.pwr_my),
+    qth_other: getVal('e_qth_other', editingOriginRecord.qth_other),
+    qth_my: getVal('e_qth_my', editingOriginRecord.qth_my),
+    device_other: getVal('e_device_other', editingOriginRecord.device_other),
+    qsl_sent: getVal('e_qsl_sent', editingOriginRecord.qsl_sent),
+    qsl_rcv: getVal('e_qsl_rcv', editingOriginRecord.qsl_rcv),
+    remark: getVal('e_remark', editingOriginRecord.remark),
+  };
+
+  const {error}=await supabaseClient.schema('public').from('ham_logs').update(updateObj).eq('ts',targetTs);
+  if(error){
+    alert("更新失败:"+error.message);
+    return;
+  }
+  closeModal();
+  await loadFromCloud();
+  renderTable();
+  alert("修改已同步云端保存");
+};
+
+window.exportCsv = function(){
+  const list = globalLogList;
+  if(list.length===0){alert('暂无日志记录');return;}
+  const headers = ["对方呼号","日期","时间","模式","频率","RST发出","RST接收","对端功率","本端功率","对端QTH","本端QTH","对端设备","QSL已发","QSL已收","备注","时间戳"];
+  function csvCell(s){s = String(s??'').replace(/"/g,'""');return `"${s}"`;}
+  let lines = [headers.map(csvCell).join(',')];
+  list.forEach(r=>{
+    const row = [r.call_sign,r.log_date,r.log_time,r.mode,r.freq,r.rst_sent,r.rst_rcv,r.pwr_other,r.pwr_my,r.qth_other,r.qth_my,r.device_other,r.qsl_sent,r.qsl_rcv,r.remark,r.ts].map(csvCell);
+    lines.push(row.join(','));
+  });
+  const csvText = lines.join('\n');
+  const blob = new Blob(['\uFEFF' + csvText], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ham_log_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+};
+
+window.handleImportCsv = async function(evt){
+  const file = evt.target.files[0];if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async function(e){
+    const text = e.target.result;
+    const linesRaw = text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(x=>x.trim()!=='');
+    const insertBatch = [];
+    for(let lineIdx=1;lineIdx<linesRaw.length;lineIdx++){
+      const line = linesRaw[lineIdx];
+      const cells = [];let insideQuote = false;let buf = '';
+      for(let i=0;i<line.length;i++){
+        const c = line[i];
+        if(c==='"'){if(insideQuote && line[i+1]==='"'){buf+='"';i++;}else{insideQuote=!insideQuote;}}
+        else if(c===',' && !insideQuote){cells.push(buf);buf='';}else{buf+=c;}
+      }
+      cells.push(buf);
+      insertBatch.push({
+        call_sign:cells[0]||'',
+        log_date:normalizeDateStr(cells[1]||''),
+        log_time:normalizeTimeStr(cells[2]||''),
+        mode:cells[3]||'',
+        freq:cells[4]||'',
+        rst_sent:cells[5]||'',
+        rst_rcv:cells[6]||'',
+        pwr_other:cells[7]||'',
+        pwr_my:cells[8]||'',
+        qth_other:cells[9]||'',
+        qth_my:cells[10]||'',
+        device_other:cells[11]||'',
+        qsl_sent:cells[12]||'',
+        qsl_rcv:cells[13]||'',
+        remark:cells[14]||'',
+        ts: Number(cells[15])||Date.now()+lineIdx
+      });
+    }
+    if(insertBatch.length>0){
+      const {error}=await supabaseClient.schema('public').from('ham_logs').insert(insertBatch);
+      if(error){alert("CSV导入云端错误："+error.message);return;}
+      alert(`CSV导入成功，共载入 ${insertBatch.length} 条记录到云端`);
+      await loadFromCloud();
+      renderTable();
+    }
+    evt.target.value='';
+  };
+  reader.readAsText(file);
+};
+
+window.exportAdif = function(){
+  const list = globalLogList;
+  if(list.length===0){alert('暂无日志记录');return;}
+  let adif = "ADIF Export by HAM Log Supabase\n<ADIF_VER:5>3.1.4\n<PROGRAMID:14>BrowserSupabase\n<EOH>\n";
+  for(const r of list){
+    adif += `<QSO_DATE:8>${(r.log_date||'').replace(/-/g,'')}`;
+    adif += `<TIME_ON:6>${(r.log_time||'').replace(/:/g,'')}`;
+    adif += `<CALL:${(r.call_sign||'').length}>${r.call_sign||''}`;
+    adif += `<MODE:${(r.mode||'').length}>${r.mode||''}`;
+    adif += `<FREQ:${(r.freq||'').length}>${r.freq||''}`;
+    adif += `<RST_SENT:${(r.rst_sent||'').length}>${r.rst_sent||''}`;
+    adif += `<RST_RCVD:${(r.rst_rcv||'').length}>${r.rst_rcv||''}`;
+    adif += `<QTH:${(r.qth_other||'').length}>${r.qth_other||''}`;
+    adif += `<MY_QTH:${(r.qth_my||'').length}>${r.qth_my||''}`;
+    adif += `<NOTES:${(r.remark||'').length}>${r.remark||''}`;
+    adif += `<QSL_SENT:${(r.qsl_sent||'').length}>${r.qsl_sent||''}`;
+    adif += `<QSL_RCVD:${(r.qsl_rcv||'').length}>${r.qsl_rcv||''}`;
+    adif += `<COMMENT:${(r.device_other||'').length}>${r.device_other||''}`;
+    adif += `<EOR>\n`;
+  }
+  const blob = new Blob([adif], {type:'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ham_log_${new Date().toISOString().slice(0,10)}.adi`;
+  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+};
+
+window.handleImportAdif = async function(evt){
+  const file = evt.target.files[0];if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async function(e){
+    let text = e.target.result;
+    text = text.replace(/[\r\n]/g," ");
+    const records = [];
+    const eorSplit = text.split(/<EOR>/i);
+    for(let recStr of eorSplit){
+      recStr = recStr.trim();
+      if(!recStr) continue;
+      const qso = {
+        call_sign:"",
+        log_date:"",
+        log_time:"",
+        mode:"",
+        freq:"",
+        rst_sent:"",
+        rst_rcv:"",
+        qth_other:"",
+        qth_my:"",
+        remark:"",
+        qsl_sent:"",
+        qsl_rcv:"",
+        device_other:"",
+        pwr_other:"",
+        pwr_my:"",
+        ts:Date.now()+records.length
+      };
+      const fieldRe = /<([A-Za-z_]+):(\d+)(?::[^\>]+)?>([^<]+)/g;
+      let m;
+      while((m = fieldRe.exec(recStr))!==null){
+        const tag = m[1].toUpperCase();
+        const len = parseInt(m[2]);
+        const val = m[3].substring(0,len).trim();
+        switch(tag){
+          case "CALL": qso.call_sign = val;break;
+          case "QSO_DATE": qso.log_date = normalizeDateStr(val.replace(/(\d{4})(\d{2})(\d{2})/,"$1-$2-$3"));break;
+          case "TIME_ON": qso.log_time = normalizeTimeStr(val.replace(/(\d{2})(\d{2})/,"$1:$2"));break;
+          case "MODE": qso.mode = val;break;
+          case "FREQ": qso.freq = val;break;
+          case "RST_SENT": qso.rst_sent = val;break;
+          case "RST_RCVD": qso.rst_rcv = val;break;
+          case "QTH": qso.qth_other = val;break;
+          case "MY_QTH": qso.qth_my = val;break;
+          case "NOTES": qso.remark = val;break;
+          case "QSL_SENT": qso.qsl_sent = val;break;
+          case "QSL_RCVD": qso.qsl_rcv = val;break;
+          case "COMMENT": qso.device_other = val;break;
+        }
+      }
+      records.push(qso);
+    }
+    if(records.length>0){
+      const {error}=await supabaseClient.schema('public').from('ham_logs').insert(records);
+      if(error){alert("ADI导入云端失败:"+error.message);return;}
+      alert(`ADIF导入成功，共载入 ${records.length} 条QSO到云端`);
+      await loadFromCloud();
+      renderTable();
+    }
+    evt.target.value='';
+  };
+  reader.readAsText(file);
+};
+
+window.renderTable = function(){
+  const searchVal = document.getElementById('searchCall').value.trim().toUpperCase();
+  let list = [...globalLogList];
+  if(searchVal!=='') list = list.filter(r=> String(r.call_sign||'').toUpperCase().includes(searchVal));
+  const wrap = document.getElementById('tableWrap');
+  if(list.length===0){wrap.innerHTML = `<p>暂无匹配记录</p>`;return;}
+  let html = `<p>共 ${list.length} 条记录</p><table><thead><tr><th>对方呼号</th><th>日期</th><th>时间</th><th>模式</th><th>频率</th><th>RST发出</th><th>RST接收</th><th>对端功率</th><th>本端功率</th><th>对端QTH</th><th>本端QTH</th><th>对端设备</th><th>QSL已发</th><th>QSL已收</th><th>备注</th><th>操作</th></tr></thead><tbody>`;
+  list.forEach((r)=>{
+    html+=`<tr>
+<td>${escapeHtml(r.call_sign)}</td>
+<td>${escapeHtml(r.log_date)}</td>
+<td>${escapeHtml(r.log_time)}</td>
+<td>${escapeHtml(r.mode)}</td>
+<td>${escapeHtml(r.freq)}</td>
+<td>${escapeHtml(r.rst_sent)}</td>
+<td>${escapeHtml(r.rst_rcv)}</td>
+<td>${escapeHtml(r.pwr_other)}</td>
+<td>${escapeHtml(r.pwr_my)}</td>
+<td>${escapeHtml(r.qth_other)}</td>
+<td>${escapeHtml(r.qth_my)}</td>
+<td>${escapeHtml(r.device_other)}</td>
+<td>${escapeHtml(r.qsl_sent)}</td>
+<td>${escapeHtml(r.qsl_rcv)}</td>
+<td>${escapeHtml(r.remark)}</td>
+<td><button class="btn-edit" onclick="openEdit(${r.ts})">修改</button><button class="btn-del" onclick="deleteRecord(${r.ts})">删除</button></td>
+</tr>`;
+  });
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
+};
+
+window.onload = function(){
+  supabaseClient = window.supabase.createClient(SUPABASE_URL,SUPABASE_PUB_KEY);
+};
+</script>
+</body>
+</html>
