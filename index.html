@@ -51,8 +51,8 @@ th{background:#f1f3f5;}
   <div class="login-box">
     <h3>🔐 Supabase账号登录</h3>
     <div class="form-item">
-      <label>邮箱(用户名)</label>
-      <input id="loginEmail" type="email">
+      <label>用户名/邮箱</label>
+      <input id="loginEmail" type="text">
     </div>
     <div class="form-item" style="margin-top:8px;">
       <label>密码</label>
@@ -210,23 +210,38 @@ window.doLogin = async function(){
   const btn = document.getElementById('loginBtn');
   btn.disabled = true;
   btn.innerText = "登录中…";
-  const email = document.getElementById('loginEmail').value.trim();
+  const loginInput = document.getElementById('loginEmail').value.trim();
   const pw = document.getElementById('loginPwd').value;
   document.getElementById('loginError').innerText='';
 
-  if(!email||!pw){
-    document.getElementById('loginError').innerText="请填写邮箱与密码";
+  if(!loginInput||!pw){
+    document.getElementById('loginError').innerText="请填写账号与密码";
     btn.disabled = false;
     btn.innerText = "登录";
     return;
   }
+  let loginEmail = loginInput;
+  // 如果输入不是邮箱，就去profiles查表拿到预先存好的email
+  if(!loginInput.includes('@')){
+    const {data:userProfile, error:qErr} = await supabaseClient
+      .from('profiles')
+      .select('email')
+      .eq('username', loginInput)
+      .single();
+    if(qErr || !userProfile){
+      document.getElementById('loginError').innerText="用户名不存在";
+      btn.disabled = false;
+      btn.innerText = "登录";
+      return;
+    }
+    loginEmail = userProfile.email;
+  }
   try {
     const {data, error} = await supabaseClient.auth.signInWithPassword({
-      email: email,
+      email: loginEmail,
       password: pw
     })
     if(error) throw error;
-    //登录成功业务逻辑
     document.getElementById('loginScreen').style.display="none";
     document.getElementById('mainApp').style.display="block";
     setDefaultDate();
